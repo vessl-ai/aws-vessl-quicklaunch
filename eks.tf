@@ -1,49 +1,66 @@
 locals {
-  worker_node_groups = [
-    for _, config in var.workers : {
-      for az, subnet in zipmap(module.vpc.azs, module.vpc.private_subnets) : replace("${config.instance_type}-${az}", ".", "_") => {
-        name          = replace("${config.instance_type}-${az}", ".", "_")
-        ami_type      = try(config.ami_type, "AL2023_x86_64_STANDARD")
-        instance_types = [config.instance_type]
-        min_size      = try(config.min_size, 0)
-        desired_size = try(config.desired_size, config.min_size, 0)
-        max_size      = try(config.max_size, 5)
-        subnet_ids    = [subnet]
-        labels        = {
-          "v1.k8s.vessl.ai/managed"           = "true",
-          "v1.k8s.vessl.ai/aws-instance-type" = config.instance_type,
-        }
-        tags          = merge(
-          local.tags,
-          {
-            "k8s.io/cluster-autoscaler/enabled" = "true",
-            "k8s.io/cluster-autoscaler/${var.stack_name}" = "owned",
+  worker_node_groups = merge(
+    [
+      for _, config in var.workers : {
+        for az, subnet in zipmap(module.vpc.azs, module.vpc.private_subnets) :
+        replace("${config.instance_type}-${az}", ".", "_") => {
+          name           = replace("${config.instance_type}-${az}", ".", "_")
+          ami_type       = try(config.ami_type, "AL2023_x86_64_STANDARD")
+          instance_types = [config.instance_type]
+          min_size       = try(config.min_size, 0)
+          desired_size   = try(config.desired_size, config.min_size, 0)
+          max_size       = try(config.max_size, 5)
+          subnet_ids     = [subnet]
+          labels = {
+            "v1.k8s.vessl.ai/managed"           = "true",
+            "v1.k8s.vessl.ai/aws-instance-type" = config.instance_type,
           }
-        )
+          tags = merge(
+            local.tags,
+            {
+              "k8s.io/cluster-autoscaler/enabled"                                               = "true",
+              "k8s.io/cluster-autoscaler/${var.stack_name}"                                     = "owned",
+              "k8s.io/cluster-autoscaler/node-template/label/v1.k8s.vessl.ai/managed"           = "true",
+              "k8s.io/cluster-autoscaler/node-template/label/v1.k8s.vessl.ai/aws-instance-type" = config.instance_type,
+              "k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage"             = "512Gi"
+            },
+
+            length(data.aws_ec2_instance_type.workers[config.instance_type].gpus) > 0 ? {
+              "k8s.io/cluster-autoscaler/node-template/resources/nvidia.com/gpu" = tostring(tolist(data.aws_ec2_instance_type.workers[config.instance_type].gpus)[0].count)
+            } : {}
+          )
+        }
       }
-    }
-  ]
+    ]...
+  )
+}
+
+data "aws_ec2_instance_type" "workers" {
+  for_each      = var.workers
+  instance_type = each.value.instance_type
 }
 
 module "eks" {
-  source = "terraform-aws-modules/eks/aws"
+  source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.31"
 
-  cluster_name = var.stack_name
+  cluster_name    = var.stack_name
   cluster_version = "1.32"
-
-  cluster_addons = {
-    aws-ebs-csi-driver = {}
-  }
 
   cluster_endpoint_public_access = true
 
   enable_efa_support = true
-  enable_irsa = true
+  enable_irsa        = true
 
-  vpc_id = module.vpc.vpc_id
-  subnet_ids = module.vpc.private_subnets
+  cluster_addons = {
+    metrics-server = {}
+  }
+
+  vpc_id                          = module.vpc.vpc_id
+  subnet_ids                      = module.vpc.private_subnets
   cluster_endpoint_private_access = true
+
+  depends_on = [module.vpc]
 
   access_entries = {
     admin = {
@@ -59,33 +76,79 @@ module "eks" {
     }
   }
 
+  eks_managed_node_group_defaults = {
+    iam_role_arn    = aws_iam_role.eks_nodegroup_role.arn
+    create_iam_role = false
+    block_device_mappings = {
+      xvda = {
+        device_name = "/dev/xvda"
+        ebs = {
+          volume_size           = 512
+          volume_type           = "gp3"
+          iops                  = 3000
+          throughput            = 125
+          encrypted             = true
+          delete_on_termination = true
+        }
+      }
+    }
+  }
+
   eks_managed_node_groups = merge(
     {
       system = {
-        name = "system"
-        ami_type = "AL2023_x86_64_STANDARD"
+        name           = "system"
+        ami_type       = "AL2023_x86_64_STANDARD"
         instance_types = ["m6i.large"]
-        min_size = 1
-        max_size = 5
-        subnet_ids = module.vpc.public_subnets
+        min_size       = 1
+        max_size       = 5
+        subnet_ids     = module.vpc.public_subnets
         labels = {
-          "v1.k8s.vessl.ai/managed" = "true",
+          "v1.k8s.vessl.ai/managed"   = "true",
           "v1.k8s.vessl.ai/dedicated" = "manager",
         }
         vpc_security_group_ids = [aws_security_group.system_nodeport_public.id]
         tags = merge(
           local.tags,
           {
-            "k8s.io/cluster-autoscaler/enabled" = "true",
-            "k8s.io/cluster-autoscaler/${var.stack_name}" = "owned",
+            "k8s.io/cluster-autoscaler/enabled"                                       = "true",
+            "k8s.io/cluster-autoscaler/${var.stack_name}"                             = "owned",
+            "k8s.io/cluster-autoscaler/node-template/label/v1.k8s.vessl.ai/managed"   = "true",
+            "k8s.io/cluster-autoscaler/node-template/label/v1.k8s.vessl.ai/dedicated" = "manager",
+            "k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage"     = "512Gi"
           }
         )
       },
     },
-    local.worker_node_groups...
+    local.worker_node_groups
   )
   tags = local.tags
 }
+
+resource "aws_eks_addon" "ebs_csi_driver" {
+  depends_on = [module.eks]
+
+  addon_name    = "aws-ebs-csi-driver"
+  cluster_name  = module.eks.cluster_name
+  addon_version = "v1.29.1-eksbuild.1"
+}
+
+resource "kubernetes_storage_class_v1" "default_storage_class" {
+  depends_on = [aws_eks_addon.ebs_csi_driver]
+  provider   = kubernetes.eks
+
+  metadata {
+    name = "vessl-ebs"
+    annotations = {
+      "storageclass.kubernetes.io/is-default-class" = "true"
+    }
+  }
+
+  storage_provisioner = "ebs.csi.aws.com"
+  reclaim_policy      = "Delete"
+  volume_binding_mode = "WaitForFirstConsumer"
+}
+
 
 data "aws_eks_cluster_auth" "cluster" {
   name = module.eks.cluster_name
