@@ -1,22 +1,30 @@
 resource "helm_release" "ingress_nginx" {
   repository = "https://kubernetes.github.io/ingress-nginx"
-  chart = "ingress-nginx"
-  name = "ingress-nginx"
-  namespace = "kube-system"
-  version = "4.12.1"
+  chart      = "ingress-nginx"
+  name       = "ingress-nginx"
+  namespace  = "kube-system"
+  version    = "4.12.1"
   values = [
     yamlencode({
       controller = {
+        ingressClassResource = {
+          name            = "nginx"
+          enabled         = true
+          default         = true
+          controllerValue = "k8s.io/ingress-nginx"
+        }
+
         service = {
           annotations = {
-            "external-dns.alpha.kubernetes.io/hostname" = "*.${var.cluster_domain_name}"
-            "service.beta.kubernetes.io/aws-load-balancer-ssl-cert" = var.acm_arn
+            "external-dns.alpha.kubernetes.io/hostname"                                      = "*.${var.cluster_domain_name}"
             "service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled" = "true"
-            "service.beta.kubernetes.io/aws-load-balancer-type" = "nlb"
-            "service.beta.kubernetes.io/aws-load-balancer-backend-protocol" = "tcp"
-            "service.beta.kubernetes.io/aws-load-balancer-ssl-ports" = "443"
-            "service.beta.kubernetes.io/aws-load-balancer-subnets" = join(",", var.public_subnet_ids)
-            "service.beta.kubernetes.io/aws-load-balancer-scheme" = "internet-facing"
+            "service.beta.kubernetes.io/aws-load-balancer-type"                              = "nlb"
+            "service.beta.kubernetes.io/aws-load-balancer-backend-protocol"                  = "tcp"
+            "service.beta.kubernetes.io/aws-load-balancer-subnets"                           = join(",", var.public_subnet_ids)
+            "service.beta.kubernetes.io/aws-load-balancer-scheme"                            = "internet-facing"
+            # ingress_nginx 생성 완료 이후, annotation 외부에서 추가 예정
+            # "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"                          = var.acm_arn
+            # "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"                         = "443"
           }
           targetPorts = {
             https = "80"
@@ -25,21 +33,21 @@ resource "helm_release" "ingress_nginx" {
         }
         resources = {
           requests = {
-            cpu = "300m"
+            cpu    = "300m"
             memory = "500Mi"
           }
         }
         config = {
-          proxy-body-size = "1g"
+          proxy-body-size     = "1g"
           client-body-timeout = "5m"
         }
         replicaCount = 1
         minAvailable = 1
         autoscaling = {
-          enabled = true
-          minReplicas = 1
-          maxReplicas = 5
-          targetCPUUtilizationPercentage = 50
+          enabled                           = true
+          minReplicas                       = 1
+          maxReplicas                       = 5
+          targetCPUUtilizationPercentage    = 50
           targetMemoryUtilizationPercentage = 80
         }
       }
@@ -49,17 +57,17 @@ resource "helm_release" "ingress_nginx" {
 
 resource "kubernetes_service" "tcp" {
   metadata {
-    name = "tcp"
+    name      = "tcp"
     namespace = "kube-system"
     annotations = {
-      "external-dns.alpha.kubernetes.io/hostname" = "tcp.${var.cluster_domain_name}"
+      "external-dns.alpha.kubernetes.io/hostname"       = "tcp.${var.cluster_domain_name}"
       "external-dns.alpha.kubernetes.io/endpoints-type" = "NodeExternalIP"
     }
   }
   spec {
     cluster_ip = "None"
     selector = {
-      "app.kubernetes.io/instance" = "ingress-nginx"
+      "app.kubernetes.io/instance"  = "ingress-nginx"
       "app.kubernetes.io/component" = "controller"
     }
   }
