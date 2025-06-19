@@ -10,7 +10,8 @@ data "aws_availability_zones" "available" {
 }
 
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.21.0"
 
   name = "vpc-${var.stack_name}"
   cidr = "10.0.0.0/16"
