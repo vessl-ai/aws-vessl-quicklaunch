@@ -1,3 +1,5 @@
 .terraform
 .vscode
 terraform.tfvars
+errored.tfstate
+.idea

@@ -1,0 +1,512 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  CloudFormation to create AWS resources which is necessary to use VESSL in AWS.
+  This creates and S3 bucket for terraform state, and a CodeBuild project to apply terraform.
+
+Parameters:
+  Region:
+    Type: String
+    Description: AWS region for deployment
+    Default: "us-west-2"
+  AgentAccessToken:
+    Type: String
+    Description: Agent access token issued by VESSL AI
+  ClusterDomainName:
+    Type: String
+    Description: Cluster domain name to access your workload in public.
+
+Resources:
+  TerraformStateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "tf-state-backend-${AWS::StackName}-${AWS::AccountId}"
+
+  # IAM Policies for Terraform operations
+  TerraformEKSPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - eks:*
+              - iam:ListOpenIDConnectProviders
+              - iam:GetOpenIDConnectProvider
+              - iam:TagOpenIDConnectProvider
+              - iam:UntagOpenIDConnectProvider
+              - logs:CreateLogGroup
+              - logs:PutRetentionPolicy
+              - logs:ListTagsLogGroup
+              - logs:ListTagsForResource
+              - logs:TagLogGroup
+              - logs:UntagLogGroup
+              - logs:DescribeLogGroups
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - logs:DescribeLogStreams
+              - kms:CreateKey
+              - kms:DescribeKey
+              - kms:GetKeyPolicy
+              - kms:GetKeyRotationStatus
+              - kms:ListAliases
+              - kms:ListKeys
+              - kms:ListResourceTags
+              - kms:TagResource
+              - kms:UntagResource
+              - kms:PutKeyPolicy
+              - kms:CreateAlias
+              - kms:DeleteAlias
+              - kms:ScheduleKeyDeletion
+              - kms:EnableKeyRotation
+              - kms:DisableKeyRotation
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource: "*"
+          # CloudWatch Logs deletion with resource constraints
+          - Effect: Allow
+            Action:
+              - logs:DeleteLogGroup
+            Resource: 
+              - !Sub "arn:aws:logs:${Region}:${AWS::AccountId}:log-group:/aws/eks/${AWS::StackName}/*"
+              - !Sub "arn:aws:logs:${Region}:${AWS::AccountId}:log-group:/aws/vpc/flowlogs"
+              - !Sub "arn:aws:logs:${Region}:${AWS::AccountId}:log-group:vpc-flow-logs-*"
+
+  TerraformVPCPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # General EC2, ELB, AutoScaling permissions
+          - Effect: Allow
+            Action:
+              - ec2:Describe*
+              - ec2:Get*
+              - ec2:List*
+              - ec2:Search*
+              - ec2:CreateVpc
+              - ec2:CreateSubnet
+              - ec2:CreateInternetGateway
+              - ec2:CreateNatGateway
+              - ec2:CreateRouteTable
+              - ec2:CreateRoute
+              - ec2:CreateSecurityGroup
+              - ec2:CreateTags
+              - ec2:CreateKeyPair
+              - ec2:CreateLaunchTemplate
+              - ec2:CreateNetworkInterface
+              - ec2:AttachInternetGateway
+              - ec2:AttachNetworkInterface
+              - ec2:AssociateRouteTable
+              - ec2:AssociateSubnetCidrBlock
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:AuthorizeSecurityGroupEgress
+              - ec2:AllocateAddress
+              - ec2:ModifyVpcAttribute
+              - ec2:ModifySubnetAttribute
+              - ec2:ModifyNetworkInterfaceAttribute
+              - ec2:DeleteVpc
+              - ec2:DeleteSubnet
+              - ec2:DeleteInternetGateway
+              - ec2:DeleteNatGateway
+              - ec2:DeleteRouteTable
+              - ec2:DeleteRoute
+              - ec2:DeleteSecurityGroup
+              - ec2:DeleteKeyPair
+              - ec2:DeleteLaunchTemplate
+              - ec2:DeleteNetworkInterface
+              - ec2:DetachInternetGateway
+              - ec2:DetachNetworkInterface
+              - ec2:DisassociateRouteTable
+              - ec2:RevokeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupEgress
+              - ec2:ReleaseAddress
+              - ec2:RunInstances
+              - ec2:CreateNetworkAcl
+              - ec2:DeleteNetworkAcl
+              - ec2:CreateNetworkAclEntry
+              - ec2:DeleteNetworkAclEntry
+              - ec2:ReplaceNetworkAclEntry
+              - ec2:AssociateNetworkAcl
+              - ec2:DisassociateNetworkAcl
+              - ec2:ReplaceNetworkAclAssociation
+              - ec2:CreateFlowLogs
+              - ec2:DeleteFlowLogs
+              - ec2:DescribeFlowLogs
+              - ec2:DescribeAvailabilityZones
+              - ec2:DescribeAccountAttributes
+              - elasticloadbalancing:*
+              - autoscaling:*
+            Resource: "*"
+          # EC2 instance termination with conditions
+          - Effect: Allow
+            Action:
+              - ec2:TerminateInstances
+            Resource: "*"
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/Stack: !Ref AWS::StackName
+          # EBS volume deletion with conditions
+          - Effect: Allow
+            Action:
+              - ec2:DeleteVolume
+            Resource: "*"
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/Stack: !Ref AWS::StackName
+
+  TerraformRoute53Policy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - route53:*
+              - route53domains:*
+            Resource: "*"
+
+  TerraformACMPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - acm:*
+            Resource: "*"
+
+  TerraformS3Policy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:GetBucketVersioning
+              - s3:PutBucketVersioning
+              - s3:GetBucketLocation
+              - s3:ListBucketVersions
+            Resource:
+              - !Sub "arn:aws:s3:::${TerraformStateBucket}/*"
+              - !Sub "arn:aws:s3:::${TerraformStateBucket}"
+
+  TerraformCodeBuildPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub "arn:aws:logs:${Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
+
+  TerraformIAMPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Basic IAM read operations
+          - Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:GetRolePolicy
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:ListPolicyVersions
+              - iam:ListAttachedRolePolicies
+              - iam:ListRolePolicies
+              - iam:ListInstanceProfiles
+              - iam:ListInstanceProfilesForRole
+              - iam:GetInstanceProfile
+              - iam:TagRole
+              - iam:UntagRole
+              - iam:TagPolicy
+              - iam:UntagPolicy
+              - iam:TagInstanceProfile
+              - iam:UntagInstanceProfile
+              - iam:ListRoleTags
+              - iam:ListPolicyTags
+              - sts:GetCallerIdentity
+              - sts:GetSessionToken
+              - sts:DecodeAuthorizationMessage
+              - iam:GetAccountSummary
+              - organizations:DescribeOrganization
+              - organizations:ListAccounts
+            Resource: "*"
+          
+          # IAM role creation and deletion with conditions
+          - Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:UpdateRole
+              - iam:UpdateRoleDescription
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-*"
+          
+          # IAM policy creation and deletion with conditions
+          - Effect: Allow
+            Action:
+              - iam:CreatePolicy
+              - iam:DeletePolicy
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:policy/${AWS::StackName}-*"
+          
+          # IAM instance profile operations with conditions
+          - Effect: Allow
+            Action:
+              - iam:CreateInstanceProfile
+              - iam:DeleteInstanceProfile
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+            Resource:
+              - !Sub "arn:aws:iam::${AWS::AccountId}:instance-profile/${AWS::StackName}-*"
+              - !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-*"
+          
+          # IAM policy attachment with strict conditions - stack-specific policies only
+          - Effect: Allow
+            Action:
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-*"
+            Condition:
+              ArnLike:
+                iam:PolicyARN: !Sub "arn:aws:iam::${AWS::AccountId}:policy/${AWS::StackName}-*"
+          
+          # IAM policy attachment for specific AWS managed policies
+          - Effect: Allow
+            Action:
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-*"
+            Condition:
+              ArnEquals:
+                iam:PolicyARN:
+                  - "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+                  - "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
+                  - "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+                  - "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+                  - "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+                  - "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+          
+          # Service linked role creation with condition
+          - Effect: Allow
+            Action:
+              - iam:CreateServiceLinkedRole
+              - iam:DeleteServiceLinkedRole
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:AWSServiceName:
+                  - "eks.amazonaws.com"
+                  - "eks-nodegroup.amazonaws.com"
+                  - "elasticloadbalancing.amazonaws.com"
+                  - "autoscaling.amazonaws.com"
+          
+          # PassRole with condition to only allow roles created by this stack
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-*"
+
+          - Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-*"
+            Condition:
+              StringEquals:
+                iam:PassedToService:
+                  - "eks.amazonaws.com"
+                  - "ec2.amazonaws.com"
+                  - "autoscaling.amazonaws.com"
+                  - "elasticloadbalancing.amazonaws.com"
+          
+          # OIDC provider operations
+          - Effect: Allow
+            Action:
+              - iam:CreateOpenIDConnectProvider
+              - iam:DeleteOpenIDConnectProvider
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/*"
+          
+          # IAM role inline policy operations for roles created by this stack (read-only)
+          - Effect: Allow
+            Action:
+              - iam:GetRolePolicy
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-*"
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "CodeBuild-TerraformRole-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref TerraformEKSPolicy
+        - !Ref TerraformVPCPolicy
+        - !Ref TerraformRoute53Policy
+        - !Ref TerraformACMPolicy
+        - !Ref TerraformS3Policy
+        - !Ref TerraformCodeBuildPolicy
+        - !Ref TerraformIAMPolicy
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "Lambda-CodeBuildTrigger-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CodeBuildStartPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                Resource: !GetAtt TerraformCodeBuildProject.Arn
+
+  CodeBuildTriggerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "codebuild-trigger-${AWS::StackName}"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import cfnresponse
+          
+          def lambda_handler(event, context):
+              try:
+                  if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+                      codebuild = boto3.client('codebuild')
+                      project_name = event['ResourceProperties']['ProjectName']
+          
+                      response = codebuild.start_build(projectName=project_name)
+                      build_id = response['build']['id']
+          
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, 
+                                     {'BuildId': build_id}, 
+                                     f"build-{build_id}")
+                  else:
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  print(f"Error: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, 
+                                 {'Error': str(e)})
+
+  TerraformCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "terraform-code-build-${AWS::StackName}-${AWS::AccountId}"
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Source:
+        Type: GITHUB
+        Location: "https://github.com/vessl-ai/aws-vessl-quicklaunch"
+        BuildSpec: |
+          version: 0.2
+          
+          phases:
+            install:
+              commands:
+                - echo "Installing Terraform.."
+                - apt-get update -y
+                - apt-get install -y unzip
+                - URL="https://releases.hashicorp.com/terraform/1.8.4/terraform_1.8.4_linux_amd64.zip"
+                - curl -sL ${URL} -o /tmp/terraform.zip
+                - unzip /tmp/terraform.zip -d /usr/local/bin/
+                - rm /tmp/terraform.zip
+                - terraform --version
+              finally:
+                - echo "Install phase completed"
+          
+            pre_build:
+              commands:
+                - echo "Init Terraform.."
+                - terraform init -backend-config="bucket=${TF_VAR_state_bucket_name}" -backend-config="key=${TF_VAR_stack_name}.tfstate" -backend-config="region=${TF_VAR_aws_region}"
+              finally:
+                - echo "init terraform phase completed"
+            build:
+              commands:
+                - echo "Apply Terraform.."
+                - terraform apply -auto-approve
+              finally:
+                - echo "apply terraform phase completed on `date`"
+
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: 'aws/codebuild/standard:6.0'
+        EnvironmentVariables:
+          - Name: TF_VAR_stack_name
+            Value: !Ref AWS::StackName
+          - Name: TF_VAR_state_bucket_name
+            Value: !Ref TerraformStateBucket
+          - Name: TF_VAR_aws_region
+            Value: !Ref Region
+          - Name: TF_VAR_agent_access_token
+            Value: !Ref AgentAccessToken
+          - Name: TF_VAR_cluster_domain_name
+            Value: !Ref ClusterDomainName
+          - Name: TF_VAR_admin_role_arn
+            Value: !GetAtt CodeBuildServiceRole.Arn
+
+
+      Artifacts:
+        Type: NO_ARTIFACTS
+
+  TriggerCodeBuild:
+    Type: AWS::CloudFormation::CustomResource
+    DependsOn:
+      - TerraformCodeBuildProject
+      - CodeBuildTriggerFunction
+    Properties:
+      ServiceToken: !GetAtt CodeBuildTriggerFunction.Arn
+      ProjectName: !Ref TerraformCodeBuildProject
+
+Outputs:
+  CodeBuildProjectName:
+    Description: The name of the created CodeBuild project.
+    Value: !Ref TerraformCodeBuildProject
+  TerraformStateBucketName:
+    Description: The name of the S3 bucket created for Terraform state.
+    Value: !Ref TerraformStateBucket
+  TerraformStateFileName:
+    Description: The name of the Terraform state in the S3 bucket.
+    Value: !Sub "${AWS::StackName}.tfstate"
+  Region:
+    Description: The Region of the EKS cluster and resources.
+    Value: !Ref Region
+  CodeBuildServiceRoleArn:
+    Description: The ARN of the CodeBuild service role.
+    Value: !GetAtt CodeBuildServiceRole.Arn
