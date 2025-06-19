@@ -1,6 +1,14 @@
 module "kube" {
-  depends_on = [module.eks, module.vpc, aws_acm_certificate.cert, aws_route53_zone.primary]
-  source     = "./kube"
+  depends_on = [
+    module.eks,
+    module.vpc,
+    aws_acm_certificate.cert,
+    aws_route53_zone.primary,
+    aws_iam_role_policy_attachment.external_dns_policy_attachment,
+    aws_iam_role_policy_attachment.cluster_autoscaler_policy_attachment,
+    aws_iam_role_policy_attachment.lb_controller_policy_attachment
+  ]
+  source = "./kube"
 
   agent_access_token                    = var.agent_access_token
   stack_name                            = var.stack_name
