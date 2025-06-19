@@ -15,7 +15,7 @@ resource "helm_release" "cluster_autoscaler" {
         create = true
         serviceAccount = {
           create = true
-          name = "cluster-autoscaler"
+          name   = "cluster-autoscaler"
           annotations = {
             "eks.amazonaws.com/role-arn" = var.cluster_autoscaler_role_arn
           }

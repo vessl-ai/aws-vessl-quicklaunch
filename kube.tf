@@ -1,5 +1,5 @@
 module "kube" {
-  depends_on = [module.eks, module.vpc, aws_acm_certificate.cert]
+  depends_on = [module.eks, module.vpc, aws_acm_certificate.cert, aws_route53_zone.primary]
   source     = "./kube"
 
   agent_access_token                    = var.agent_access_token
@@ -13,6 +13,7 @@ module "kube" {
   aws_load_balancer_controller_role_arn = aws_iam_role.lb_controller_role.arn
   acm_arn                               = aws_acm_certificate.cert.arn
   public_subnet_ids                     = module.vpc.public_subnets
+  cluster_arn                           = module.eks.cluster_arn
 
   providers = {
     helm       = helm.eks

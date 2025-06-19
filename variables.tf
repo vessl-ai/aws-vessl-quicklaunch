@@ -19,25 +19,25 @@ variable "workers" {
     (Note: a node group will be created corresponding to each entry in this map and each subnet within the VPC)
   EOT
   type = map(object({
-    ami_type       = string
-    instance_type  = string
-    min_size       = number
-    max_size       = number
+    ami_type      = string
+    instance_type = string
+    min_size      = number
+    max_size      = number
   }))
   default = {
     "m6i.large" = {
-      ami_type       = "AL2023_x86_64_STANDARD"
-      instance_type  = "m6i.large"
-      min_size       = 0
-      desired_size = 0
-      max_size       = 5
+      ami_type      = "AL2023_x86_64_STANDARD"
+      instance_type = "m6i.large"
+      min_size      = 0
+      desired_size  = 0
+      max_size      = 5
     },
     "g4dn.xlarge" = {
-      ami_type       = "AL2023_x86_64_NVIDIA"
-      instance_type  = "g4dn.xlarge"
-      min_size       = 0
-      desired_size = 0
-      max_size       = 5
+      ami_type      = "AL2023_x86_64_NVIDIA"
+      instance_type = "g4dn.xlarge"
+      min_size      = 0
+      desired_size  = 0
+      max_size      = 5
     }
   }
 }

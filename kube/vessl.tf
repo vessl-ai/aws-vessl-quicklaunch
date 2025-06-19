@@ -19,38 +19,38 @@ locals {
   }
   agent_helm_values = {
     agent = {
-      env = "prod"
-      apiServer = "https://api.vessl.ai"
-      accessToken = var.agent_access_token
-      clusterName = var.stack_name
-      providerType = "aws"
-      image = "quay.io/vessl-ai/cluster-agent:0.6.29"
-      containerRuntime = "containerd"
+      env                = "prod"
+      apiServer          = "https://api.vessl.ai"
+      accessToken        = var.agent_access_token
+      clusterName        = var.stack_name
+      providerType       = "aws"
+      image              = "quay.io/vessl-ai/cluster-agent:0.6.29"
+      containerRuntime   = "containerd"
       clusterServiceType = "Ingress"
-      ingressEndpoint = var.cluster_domain_name
-      region = var.aws_region
-      nodeSelector = local.node_selector
-      resourceSpecs = {
-        for worker, config in var.workers : worker => {
-          name = config.instance_type
+      ingressEndpoint    = var.cluster_domain_name
+      region             = var.aws_region
+      nodeSelector       = local.node_selector
+      resourceSpecs = [
+        for worker, config in var.workers : {
+          name          = config.instance_type
           processorType = length(data.aws_ec2_instance_type.workers[worker].gpus) > 0 ? "GPU" : "CPU"
-          cpuLimit = data.aws_ec2_instance_type.workers[worker].default_vcpus * 0.8
-          memoryLimit = "${floor(data.aws_ec2_instance_type.workers[worker].memory_size * 0.8)}Mi"
-          gpuLimit = length(data.aws_ec2_instance_type.workers[worker].gpus) > 0 ? tolist(data.aws_ec2_instance_type.workers[worker].gpus)[0].count : null
-          gpuType = length(data.aws_ec2_instance_type.workers[worker].gpus) > 0 ? tolist(data.aws_ec2_instance_type.workers[worker].gpus)[0].name : null
-          priority = 1
+          cpuLimit      = data.aws_ec2_instance_type.workers[worker].default_vcpus * 0.8
+          memoryLimit   = "${floor(data.aws_ec2_instance_type.workers[worker].memory_size * 0.8)}Mi"
+          gpuLimit      = length(data.aws_ec2_instance_type.workers[worker].gpus) > 0 ? tolist(data.aws_ec2_instance_type.workers[worker].gpus)[0].count : null
+          gpuType       = length(data.aws_ec2_instance_type.workers[worker].gpus) > 0 ? tolist(data.aws_ec2_instance_type.workers[worker].gpus)[0].name : null
+          priority      = 1
           labels = [
             {
-              key = "v1.k8s.vessl.ai/managed"
+              key   = "v1.k8s.vessl.ai/managed"
               value = "true"
             },
             {
-              key = "v1.k8s.vessl.ai/aws-instance-type"
+              key   = "v1.k8s.vessl.ai/aws-instance-type"
               value = config.instance_type
             }
           ]
         }
-      }
+      ]
     }
     local-path-provisioner = {
       enabled = false
@@ -104,16 +104,18 @@ locals {
   }
 }
 data "aws_ec2_instance_type" "workers" {
-  for_each = var.workers
+  for_each      = var.workers
   instance_type = each.value.instance_type
 }
 resource "helm_release" "vessl_agent" {
-  repository = "https://vessl-ai.github.io/helm-charts"
-  chart = "vessl"
-  name = "vessl"
-  namespace = "vessl"
+  depends_on = [helm_release.aws_load_balancer_controller]
+
+  repository       = "https://vessl-ai.github.io/helm-charts"
+  chart            = "vessl"
+  name             = "vessl"
+  namespace        = "vessl"
   create_namespace = true
-  version = "0.0.57"
-  values = [yamlencode(local.agent_helm_values)]
-  timeout = 60 * 60 # 1H
+  version          = "0.0.57"
+  values           = [yamlencode(local.agent_helm_values)]
+  timeout          = 60 * 60 # 1H
 }

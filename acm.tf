@@ -1,5 +1,5 @@
 resource "aws_acm_certificate" "cert" {
-  domain_name = "*.${var.cluster_domain_name}"
+  domain_name       = "*.${var.cluster_domain_name}"
   validation_method = "DNS"
 
   tags = local.tags
@@ -7,6 +7,8 @@ resource "aws_acm_certificate" "cert" {
   lifecycle {
     create_before_destroy = true
   }
+
+  depends_on = [module.vpc]
 }
 
 resource "aws_route53_record" "validation" {
@@ -19,9 +21,13 @@ resource "aws_route53_record" "validation" {
   }
 
   allow_overwrite = true
-  name = each.value.name
-  records = [each.value.record]
-  ttl = 60
-  type = each.value.type
-  zone_id = aws_route53_zone.primary.zone_id
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = aws_route53_zone.primary.zone_id
+
+  depends_on = [aws_acm_certificate.cert]
 }
+
+

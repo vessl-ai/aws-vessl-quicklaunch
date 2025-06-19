@@ -4,6 +4,8 @@ resource "helm_release" "ingress_nginx" {
   name       = "ingress-nginx"
   namespace  = "kube-system"
   version    = "4.12.1"
+  depends_on = [helm_release.aws_load_balancer_controller, helm_release.external_dns]
+
   values = [
     yamlencode({
       controller = {
@@ -56,6 +58,8 @@ resource "helm_release" "ingress_nginx" {
 }
 
 resource "kubernetes_service" "tcp" {
+  depends_on = [helm_release.aws_load_balancer_controller, helm_release.external_dns]
+
   metadata {
     name      = "tcp"
     namespace = "kube-system"
