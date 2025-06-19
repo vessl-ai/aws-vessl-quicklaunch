@@ -1,14 +1,18 @@
 resource "helm_release" "external_dns" {
   repository = "https://kubernetes-sigs.github.io/external-dns/"
-  chart = "external-dns"
-  name = "external-dns"
-  namespace = "kube-system"
-  version = "1.15.2"
+  chart      = "external-dns"
+  name       = "external-dns"
+  namespace  = "kube-system"
+  version    = "1.15.2"
   values = [
     yamlencode({
       provider = {
         name = "aws"
       }
+      domainFilter = [var.cluster_domain_name]
+      txtOwnerId   = "vessl-${var.cluster_arn}"
+      policy       = "sync"
+
       env = [
         {
           name  = "AWS_DEFAULT_REGION"
@@ -17,7 +21,7 @@ resource "helm_release" "external_dns" {
       ]
       serviceAccount = {
         create = true
-        name = "external-dns"
+        name   = "external-dns"
         annotations = {
           "eks.amazonaws.com/role-arn" = var.external_dns_role_arn
         }
