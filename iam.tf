@@ -25,6 +25,7 @@ resource "aws_iam_policy" "external_dns_policy" {
       }
     ]
   })
+  tags = local.tags
 }
 
 resource "aws_iam_role" "external_dns_role" {
@@ -48,6 +49,7 @@ resource "aws_iam_role" "external_dns_role" {
       }
     ]
   })
+  tags = local.tags
 }
 
 resource "aws_iam_role_policy_attachment" "external_dns_policy_attachment" {
@@ -95,6 +97,7 @@ resource "aws_iam_policy" "cluster_autoscaler_policy" {
       }
     ]
   })
+  tags = local.tags
 }
 
 resource "aws_iam_role" "cluster_autoscaler_role" {
@@ -118,6 +121,7 @@ resource "aws_iam_role" "cluster_autoscaler_role" {
       }
     ]
   })
+  tags = local.tags
 }
 resource "aws_iam_role_policy_attachment" "cluster_autoscaler_policy_attachment" {
   role       = aws_iam_role.cluster_autoscaler_role.name
@@ -130,6 +134,7 @@ resource "aws_iam_policy" "lb_controller_policy" {
   description = "Policy for AWS Load Balancer Controller to manage load balancers"
 
   policy = file("${path.module}/resources/load-balancer-controller-iam-policy.json")
+  tags   = local.tags
 }
 
 resource "aws_iam_role" "lb_controller_role" {
@@ -153,6 +158,7 @@ resource "aws_iam_role" "lb_controller_role" {
       }
     ]
   })
+  tags = local.tags
 }
 
 resource "aws_iam_role_policy_attachment" "lb_controller_policy_attachment" {
