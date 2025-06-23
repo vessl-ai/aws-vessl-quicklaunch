@@ -14,7 +14,7 @@ module "kube" {
   stack_name                            = var.stack_name
   cluster_domain_name                   = var.cluster_domain_name
   aws_region                            = var.aws_region
-  workers                               = var.workers
+  workers                               = local.workers
   vpc_id                                = module.vpc.vpc_id
   cluster_autoscaler_role_arn           = aws_iam_role.cluster_autoscaler_role.arn
   external_dns_role_arn                 = aws_iam_role.external_dns_role.arn

@@ -32,7 +32,7 @@ locals {
       nodeSelector       = local.node_selector
       resourceSpecs = [
         for worker, config in var.workers : {
-          name          = config.instance_type
+          name          = config["instance_type"]
           processorType = length(data.aws_ec2_instance_type.workers[worker].gpus) > 0 ? "GPU" : "CPU"
           cpuLimit      = data.aws_ec2_instance_type.workers[worker].default_vcpus * 0.8
           memoryLimit   = "${floor(data.aws_ec2_instance_type.workers[worker].memory_size * 0.8)}Mi"
@@ -46,7 +46,7 @@ locals {
             },
             {
               key   = "v1.k8s.vessl.ai/aws-instance-type"
-              value = config.instance_type
+              value = config["instance_type"]
             }
           ]
         }
@@ -105,7 +105,7 @@ locals {
 }
 data "aws_ec2_instance_type" "workers" {
   for_each      = var.workers
-  instance_type = each.value.instance_type
+  instance_type = each.value["instance_type"]
 }
 resource "helm_release" "vessl_agent" {
   depends_on = [helm_release.aws_load_balancer_controller]

@@ -13,33 +13,38 @@ variable "state_bucket_name" {
   type        = string
 }
 
-variable "workers" {
-  description = <<EOT
-    Map of CPU worker instance types and their configurations
-    (Note: a node group will be created corresponding to each entry in this map and each subnet within the VPC)
-  EOT
-  type = map(object({
-    ami_type      = string
-    instance_type = string
-    min_size      = number
-    max_size      = number
-  }))
-  default = {
-    "m6i.large" = {
-      ami_type      = "AL2023_x86_64_STANDARD"
-      instance_type = "m6i.large"
-      min_size      = 0
-      desired_size  = 0
-      max_size      = 5
-    },
-    "g4dn.xlarge" = {
-      ami_type      = "AL2023_x86_64_NVIDIA"
-      instance_type = "g4dn.xlarge"
-      min_size      = 0
-      desired_size  = 0
-      max_size      = 5
-    }
-  }
+variable "gpu_instance_type" {
+  description = ""
+  type        = string
+}
+
+variable "gpu_pool_min_size_per_az" {
+  description = ""
+  type        = number
+  default     = 0
+}
+variable "gpu_pool_max_size_per_az" {
+  description = ""
+  type        = number
+  default     = 5
+}
+
+variable "cpu_instance_type" {
+  description = ""
+  type        = string
+  default     = "m6i.large"
+}
+
+variable "cpu_pool_min_size_per_az" {
+  description = ""
+  type        = number
+  default     = 0
+}
+
+variable "cpu_pool_max_size_per_az" {
+  description = ""
+  type        = number
+  default     = 5
 }
 
 variable "cluster_domain_name" {

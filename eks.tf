@@ -1,19 +1,49 @@
 locals {
+  cpu_node_group = {
+    var.cpu_instance_type = {
+      ami_type      = "AL2023_x86_64_STANDARD"
+      instance_type = var.cpu_instance_type
+      min_size      = var.cpu_pool_min_size_per_az
+      desired_size  = var.cpu_pool_min_size_per_az
+      max_size      = var.cpu_pool_max_size_per_az
+    }
+  }
+
+  gpu_node_group = {
+    var.gpu_instance_type = {
+      ami_type      = "AL2023_x86_64_NVIDIA"
+      instance_type = var.gpu_instance_type
+      min_size      = var.gpu_pool_min_size_per_az
+      desired_size  = var.gpu_pool_min_size_per_az
+      max_size      = var.gpu_pool_max_size_per_az
+    }
+  }
+
+  workers = {
+    for k, v in merge(local.cpu_node_group, local.gpu_node_group) : k => {
+      ami_type      = tostring(v.ami_type)
+      instance_type = tostring(v.instance_type)
+      min_size      = tonumber(v.min_size)
+      desired_size  = tonumber(v.desired_size)
+      max_size      = tonumber(v.max_size)
+    }
+  }
+
   worker_node_groups = merge(
     [
-      for _, config in var.workers : {
+      for _, config in local.workers : {
         for az, subnet in zipmap(module.vpc.azs, module.vpc.private_subnets) :
-        replace("${config.instance_type}-${az}", ".", "_") => {
-          name           = replace("${config.instance_type}-${az}", ".", "_")
-          ami_type       = try(config.ami_type, "AL2023_x86_64_STANDARD")
-          instance_types = [config.instance_type]
-          min_size       = try(config.min_size, 0)
-          desired_size   = try(config.desired_size, config.min_size, 0)
-          max_size       = try(config.max_size, 5)
+        replace("${config["instance_type"]}-${az}", ".", "_") => {
+          name           = replace("${config["instance_type"]}-${az}", ".", "_")
+          ami_type       = try(config["ami_type"], "AL2023_x86_64_STANDARD")
+          instance_types = [config["instance_type"]]
+          min_size       = try(config["min_size"], 0)
+          desired_size   = try(config["desired_size"], config["min_size"], 0)
+          max_size       = try(config["max_size"], 5)
           subnet_ids     = [subnet]
           labels = {
             "v1.k8s.vessl.ai/managed"           = "true",
-            "v1.k8s.vessl.ai/aws-instance-type" = config.instance_type,
+            "v1.k8s.vessl.ai/aws-instance-type" = config["instance_type"],
           }
           tags = merge(
             local.tags,
@@ -21,12 +51,12 @@ locals {
               "k8s.io/cluster-autoscaler/enabled"                                               = "true",
               "k8s.io/cluster-autoscaler/${var.stack_name}"                                     = "owned",
               "k8s.io/cluster-autoscaler/node-template/label/v1.k8s.vessl.ai/managed"           = "true",
-              "k8s.io/cluster-autoscaler/node-template/label/v1.k8s.vessl.ai/aws-instance-type" = config.instance_type,
+              "k8s.io/cluster-autoscaler/node-template/label/v1.k8s.vessl.ai/aws-instance-type" = config["instance_type"],
               "k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage"             = "512Gi"
             },
 
-            length(data.aws_ec2_instance_type.workers[config.instance_type].gpus) > 0 ? {
-              "k8s.io/cluster-autoscaler/node-template/resources/nvidia.com/gpu" = tostring(tolist(data.aws_ec2_instance_type.workers[config.instance_type].gpus)[0].count)
+            length(data.aws_ec2_instance_type.workers[config["instance_type"]]["gpus"]) > 0 ? {
+              "k8s.io/cluster-autoscaler/node-template/resources/nvidia.com/gpu" = tostring(tolist(data.aws_ec2_instance_type.workers[config["instance_type"]]["gpus"])[0]["count"])
             } : {}
           )
         }
@@ -36,8 +66,8 @@ locals {
 }
 
 data "aws_ec2_instance_type" "workers" {
-  for_each      = var.workers
-  instance_type = each.value.instance_type
+  for_each      = local.workers
+  instance_type = each.value["instance_type"]
 }
 
 module "eks" {
