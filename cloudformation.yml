@@ -14,7 +14,106 @@ Parameters:
   ClusterDomainName:
     Type: String
     Description: Cluster domain name to access your workload in public.
-
+  CpuPoolMin:
+    Type: Number
+    Description: CPU pool min size per available zone in region(default=0)
+    Default: "0"
+  CpuPoolMax:
+    Type: Number
+    Description: Cpu pool max size per available zone in region(default=5)
+    Default: "5"
+  GpuPoolMin:
+    Type: Number
+    Description: Gpu pool min size per available zone in region(default=0)
+    Default: "0"
+  GpuPoolMax:
+    Type: Number
+    Description: Gpu pool max size per available zone in region(default=5)
+    Default: "5"
+  GpuInstanceType:
+    Type: String
+    Description: GPU instance type
+    Default: "g4dn.xlarge"
+    AllowedValues:
+      # P5e Instances - NVIDIA Tesla H200 GPUs
+      - "p5e.xlarge"
+      - "p5e.2xlarge"
+      - "p5e.4xlarge"
+      - "p5e.8xlarge"
+      - "p5e.12xlarge"
+      - "p5e.24xlarge"
+      - "p5e.48xlarge"
+      # P5 Instances - NVIDIA Tesla H100 GPUs
+      - "p5.xlarge"
+      - "p5.2xlarge"
+      - "p5.4xlarge"
+      - "p5.8xlarge"
+      - "p5.12xlarge"
+      - "p5.24xlarge"
+      - "p5.48xlarge"
+      # P4 Instances - NVIDIA Tesla A100 GPUs
+      - "p4d.xlarge"
+      - "p4d.2xlarge"
+      - "p4d.4xlarge"
+      - "p4d.8xlarge"
+      - "p4d.12xlarge"
+      - "p4d.16xlarge"
+      - "p4d.24xlarge"
+      - "p4de.xlarge"
+      - "p4de.2xlarge"
+      - "p4de.4xlarge"
+      - "p4de.8xlarge"
+      - "p4de.12xlarge"
+      - "p4de.16xlarge"
+      - "p4de.24xlarge"
+      # P3 Instances - NVIDIA Tesla V100 GPUs
+      - "p3.2xlarge"
+      - "p3.8xlarge"
+      - "p3.16xlarge"
+      - "p3dn.24xlarge"
+      # G6e Instances - NVIDIA L40S Tensor Core GPUs
+      - "g6e.xlarge"
+      - "g6e.2xlarge"
+      - "g6e.4xlarge"
+      - "g6e.8xlarge"
+      - "g6e.12xlarge"
+      - "g6e.16xlarge"
+      - "g6e.24xlarge"
+      - "g6e.48xlarge"
+      # G6 Instances - NVIDIA L4 GPUs
+      - "g6.xlarge"
+      - "g6.2xlarge"
+      - "g6.4xlarge"
+      - "g6.8xlarge"
+      - "g6.12xlarge"
+      - "g6.16xlarge"
+      - "g6.24xlarge"
+      - "g6.48xlarge"
+      # G5 Instances - NVIDIA A10G GPUs
+      - "g5.xlarge"
+      - "g5.2xlarge"
+      - "g5.4xlarge"
+      - "g5.8xlarge"
+      - "g5.12xlarge"
+      - "g5.16xlarge"
+      - "g5.24xlarge"
+      - "g5.48xlarge"
+      # G4 Instances - NVIDIA T4 GPUs
+      - "g4dn.xlarge"
+      - "g4dn.2xlarge"
+      - "g4dn.4xlarge"
+      - "g4dn.8xlarge"
+      - "g4dn.12xlarge"
+      - "g4dn.16xlarge"
+      - "g4ad.xlarge"
+      - "g4ad.2xlarge"
+      - "g4ad.4xlarge"
+      - "g4ad.8xlarge"
+      - "g4ad.16xlarge"
+      # G3 Instances - NVIDIA Tesla M60 GPUs
+      - "g3.4xlarge"
+      - "g3.8xlarge"
+      - "g3.16xlarge"
 Resources:
   TerraformStateBucket:
     Type: AWS::S3::Bucket
@@ -68,7 +167,7 @@ Resources:
           - Effect: Allow
             Action:
               - logs:DeleteLogGroup
-            Resource: 
+            Resource:
               - !Sub "arn:aws:logs:${Region}:${AWS::AccountId}:log-group:/aws/eks/${AWS::StackName}/*"
               - !Sub "arn:aws:logs:${Region}:${AWS::AccountId}:log-group:/aws/vpc/flowlogs"
               - !Sub "arn:aws:logs:${Region}:${AWS::AccountId}:log-group:vpc-flow-logs-*"
@@ -480,8 +579,16 @@ Resources:
             Value: !Ref ClusterDomainName
           - Name: TF_VAR_admin_role_arn
             Value: !GetAtt CodeBuildServiceRole.Arn
-
-
+          - Name: TF_VAR_gpu_instance_type
+            Value: !Ref GpuInstanceType
+          - Name: TF_VAR_gpu_pool_min_size_per_az
+            Value: !Ref GpuPoolMin
+          - Name: TF_VAR_gpu_pool_max_size_per_az
+            Value: !Ref GpuPoolMax
+          - Name: TF_VAR_cpu_pool_min_size_per_az
+            Value: !Ref CpuPoolMin
+          - Name: TF_VAR_cpu_pool_max_size_per_az
+            Value: !Ref CpuPoolMax
       Artifacts:
         Type: NO_ARTIFACTS
 
