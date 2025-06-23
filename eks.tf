@@ -1,6 +1,6 @@
 locals {
   cpu_node_group = {
-    var.cpu_instance_type = {
+    (var.cpu_instance_type) = {
       ami_type      = "AL2023_x86_64_STANDARD"
       instance_type = var.cpu_instance_type
       min_size      = var.cpu_pool_min_size_per_az
@@ -10,7 +10,7 @@ locals {
   }
 
   gpu_node_group = {
-    var.gpu_instance_type = {
+    (var.gpu_instance_type) = {
       ami_type      = "AL2023_x86_64_NVIDIA"
       instance_type = var.gpu_instance_type
       min_size      = var.gpu_pool_min_size_per_az
